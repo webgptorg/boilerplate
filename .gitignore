@@ -1,6 +1,7 @@
 node_modules/
 .next/
 out/
+.promptbook/
 .env*
 !.env.example
 npm-debug.log*
