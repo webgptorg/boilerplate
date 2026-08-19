@@ -2,8 +2,6 @@ import { BookExample } from "@/components/book-example";
 import { PromptbookBrand } from "@/components/promptbook-brand";
 import { Badge, Card, Input, buttonClassName } from "@/components/ui";
 
-const BOOK_PREVIEW = `# Promptbook starter\n\nPERSONA\nPractical AI teammate\n\nGOAL\nTurn knowledge into action\n\nRULE\nSay when you do not know`;
-
 export default function Home() {
   return (
     <div className="site-shell">
