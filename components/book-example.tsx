@@ -1,8 +1,10 @@
 "use client";
 
-import { BookEditor } from "@promptbook/components";
+import { BookEditor, type BookEditorProps } from "@promptbook/components";
 import { useState } from "react";
 import { Badge, Button } from "@/components/ui";
+
+type BookValue = NonNullable<BookEditorProps["value"]>;
 
 const INITIAL_BOOK = `PERSONA
 You are a practical AI teammate for a software company.
@@ -17,10 +19,10 @@ RULE
 When information is missing, say so explicitly.
 
 STYLE
-Be concise, useful, and easy to work with.`;
+Be concise, useful, and easy to work with.` as BookValue;
 
 export function BookExample() {
-  const [value, setValue] = useState(INITIAL_BOOK);
+  const [value, setValue] = useState<BookValue>(INITIAL_BOOK);
 
   return (
     <div className="book-demo">
