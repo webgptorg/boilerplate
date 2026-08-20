@@ -25,14 +25,12 @@ const participants: ChatParticipant[] = [
 const messages: ChatMessage[] = [
   {
     id: "1",
-    createdAt: "1970-01-01T00:00:00.000Z",
     sender: "AGENT",
     content: "Hi. I am the floating Promptbook agent.",
     isComplete: true,
   },
   {
     id: "2",
-    createdAt: "1970-01-01T00:00:00.000Z",
     sender: "AGENT",
     content: "Use this pattern for support, onboarding, or an app-specific assistant.",
     isComplete: true,
