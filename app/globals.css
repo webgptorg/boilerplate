@@ -252,6 +252,20 @@ h3,
   line-height: 1.6;
 }
 
+.scenario-list { display: grid; gap: 10px; margin: 0 0 30px; }
+.scenario-option { width: 100%; display: grid; grid-template-columns: 42px 1fr auto; align-items: center; gap: 14px; border: 1px solid var(--pb-border); border-radius: 14px; padding: 14px; background: var(--pb-white); color: var(--pb-ink); text-align: left; transition: border-color 140ms ease, background 140ms ease, transform 140ms ease; }
+.scenario-option:hover, .scenario-option.selected { border-color: var(--pb-blue-dark); background: #f7fdfe; }
+.scenario-option:hover { transform: translateY(-1px); }
+.scenario-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: rgba(122, 235, 255, 0.28); color: #16758a; font-size: 1.35rem; font-weight: 800; }
+.scenario-icon.customer { background: rgba(255, 205, 140, 0.3); color: #a56516; }
+.scenario-icon.technical { background: rgba(122, 255, 235, 0.3); color: #177d6d; }
+.scenario-copy { display: grid; gap: 4px; }
+.scenario-copy strong { font-size: 0.91rem; }
+.scenario-copy small { color: var(--pb-muted); font-size: 0.78rem; line-height: 1.4; }
+.scenario-copy em { color: #94a3b8; font-size: 0.7rem; font-style: normal; }
+.badge-warm { background: rgba(255, 205, 140, 0.25); color: #9a611b; }
+.badge-blue { background: rgba(122, 235, 255, 0.2); color: #16758a; }
+
 .textarea-label {
   display: block;
   margin-bottom: 9px;
@@ -320,6 +334,8 @@ textarea::placeholder {
   justify-content: space-between;
   gap: 20px;
 }
+
+.call-participants { margin: 0; color: var(--pb-muted); font-size: 0.8rem; }
 
 .recording-pill {
   display: inline-flex;
@@ -403,6 +419,9 @@ textarea::placeholder {
 .transcript-line p { margin: 0; }
 .pending-line p { display: flex; align-items: center; gap: 4px; }
 .pending-line p span { width: 4px; height: 4px; border-radius: 50%; background: var(--pb-muted); }
+
+.call-progress { display: flex; justify-content: space-between; margin-top: 24px; color: var(--pb-muted); font-size: 0.75rem; }
+.call-action-group { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 
 .button-danger {
   background: #ef6464;
@@ -576,6 +595,11 @@ textarea::placeholder {
   .call-actions .button {
     width: 100%;
   }
+
+  .scenario-option { grid-template-columns: 38px 1fr; }
+  .scenario-icon { width: 38px; height: 38px; }
+  .scenario-option .badge { grid-column: 2; justify-self: start; }
+  .call-action-group { width: 100%; flex-direction: column; }
 
   .footer-inner {
     align-items: flex-start;
