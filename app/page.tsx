@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PromptbookBrand } from "@/components/promptbook-brand";
 
 type Screen = "context" | "call" | "after-call";
@@ -18,6 +18,25 @@ type Scenario = {
   transcript: { speaker: string; text: string }[];
   outcome: string;
   actions: Action[];
+};
+
+type SpeechRecognitionEventLike = Event & { resultIndex?: number; results: SpeechRecognitionResultList };
+type SpeechRecognitionErrorEventLike = Event & { error: string };
+type SpeechRecognitionLike = {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((event: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((event: SpeechRecognitionErrorEventLike) => void) | null;
+  onstart: (() => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
+type SpeechWindow = Window & {
+  SpeechRecognition?: SpeechRecognitionConstructor;
+  webkitSpeechRecognition?: SpeechRecognitionConstructor;
 };
 
 const scenarios: Scenario[] = [
@@ -51,22 +70,52 @@ export default function Home() {
   const [screen, setScreen] = useState<Screen>("context");
   const [selectedId, setSelectedId] = useState<ScenarioId>("weekly");
   const [context, setContext] = useState(scenarios[0].context);
-  const [visibleLines, setVisibleLines] = useState(2);
+  const [transcript, setTranscript] = useState<string[]>([]);
+  const [interimTranscript, setInterimTranscript] = useState("");
+  const [recognitionError, setRecognitionError] = useState("");
+  const [isListening, setIsListening] = useState(false);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const [actions, setActions] = useState<Action[]>(scenarios[0].actions);
   const scenario = scenarios.find((item) => item.id === selectedId) ?? scenarios[0];
-  const callFinished = visibleLines >= scenario.transcript.length;
 
   function chooseScenario(id: ScenarioId) { const next = scenarios.find((item) => item.id === id) ?? scenarios[0]; setSelectedId(id); setContext(next.context); setActions(next.actions); }
-  function startCall() { setVisibleLines(2); setActions(scenario.actions); setScreen("call"); }
-  function endCall() { setVisibleLines(scenario.transcript.length); setScreen("after-call"); }
-  function reset() { setSelectedId("weekly"); setContext(scenarios[0].context); setActions(scenarios[0].actions); setVisibleLines(2); setScreen("context"); }
+  useEffect(() => {
+    if (screen !== "call") return;
+    const SpeechRecognition = (window as SpeechWindow).SpeechRecognition ?? (window as SpeechWindow).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = true;
+    recognition.lang = navigator.language;
+    recognition.onresult = (event) => {
+      let interim = "";
+      const finalLines: string[] = [];
+      for (let index = event.resultIndex ?? 0; index < event.results.length; index += 1) {
+        const result = event.results[index];
+        if (result.isFinal) finalLines.push(result[0].transcript.trim());
+        else interim += result[0].transcript;
+      }
+      if (finalLines.length) setTranscript((current) => [...current, ...finalLines.filter(Boolean)]);
+      setInterimTranscript(interim.trim());
+    };
+    recognition.onerror = (event) => {
+      setIsListening(false);
+      setRecognitionError(event.error === "not-allowed" ? "Microphone access was blocked. Allow microphone access and try again." : `Transcription stopped: ${event.error}.`);
+    };
+    recognition.onstart = () => setIsListening(true);
+    recognition.onend = () => setIsListening(false);
+    recognitionRef.current = recognition;
+    recognition.start();
+    return () => { recognition.onresult = null; recognition.stop(); recognitionRef.current = null; };
+  }, [screen]);
+
+  function startCall() { setTranscript([]); setInterimTranscript(""); setRecognitionError(""); setActions(scenario.actions); setScreen("call"); }
+  function endCall() { recognitionRef.current?.stop(); setScreen("after-call"); }
+  function reset() { recognitionRef.current?.stop(); setSelectedId("weekly"); setContext(scenarios[0].context); setActions(scenarios[0].actions); setTranscript([]); setInterimTranscript(""); setScreen("context"); }
   function toggleAction(id: number) { setActions((current) => current.map((action) => action.id === id ? { ...action, done: !action.done } : action)); }
   function goToStep(nextScreen: Screen) {
-    if (nextScreen === "call") {
-      setVisibleLines((current) => Math.min(Math.max(current, 2), scenario.transcript.length));
-      setActions(scenario.actions);
-    }
-    if (nextScreen === "after-call") setVisibleLines(scenario.transcript.length);
+    if (nextScreen === "call") setActions(scenario.actions);
+    if (nextScreen === "after-call") recognitionRef.current?.stop();
     setScreen(nextScreen);
   }
 
@@ -75,7 +124,7 @@ export default function Home() {
     <main className="container app-content">
       <div className="app-heading"><div><span className="eyebrow">Mock workspace</span><h1>{screen === "context" ? "Prepare your call" : screen === "call" ? "Your call" : "Call complete"}</h1></div><div className="stepper" aria-label="Call progress"><button className={`step ${screen === "context" ? "active" : "complete"}`} type="button" aria-label="Go to prepare your call" aria-current={screen === "context" ? "step" : undefined} onClick={() => goToStep("context")}>1</button><span className="step-line" /><button className={`step ${screen === "call" ? "active" : screen === "after-call" ? "complete" : ""}`} type="button" aria-label="Go to your call" aria-current={screen === "call" ? "step" : undefined} onClick={() => goToStep("call")}>2</button><span className="step-line" /><button className={`step ${screen === "after-call" ? "active" : ""}`} type="button" aria-label="Go to call complete" aria-current={screen === "after-call" ? "step" : undefined} onClick={() => goToStep("after-call")}>3</button></div></div>
       {screen === "context" ? <section className="workspace-card context-card"><div className="card-copy"><span className="card-kicker">Before the call</span><h2>Choose a scenario</h2><p>Pick a prepared call to rehearse. Each mock includes a complete conversation, a realistic outcome, and follow-up actions.</p></div><div className="scenario-list" aria-label="Prepared call scenarios">{scenarios.map((item) => <button className={`scenario-option${item.id === selectedId ? " selected" : ""}`} key={item.id} type="button" onClick={() => chooseScenario(item.id)}><span className={`scenario-icon ${item.id}`} aria-hidden="true">{item.id === "weekly" ? "↗" : item.id === "customer" ? "!" : "⌁"}</span><span className="scenario-copy"><strong>{item.title}</strong><small>{item.description}</small><em>{item.duration} · {item.participants}</em></span><span className={`badge ${item.toneClass}`}>{item.tone}</span></button>)}</div><label className="textarea-label" htmlFor="context">Call context</label><textarea id="context" value={context} onChange={(event) => setContext(event.target.value)} rows={4} /><div className="card-footer"><span className="helper-text">You can edit the context before starting.</span><button className="button button-primary" type="button" onClick={startCall}>Start mock call <span aria-hidden="true">→</span></button></div></section> : null}
-      {screen === "call" ? <section className="workspace-card call-card"><div className="call-topline"><div><span className="card-kicker">Live mock transcription</span><h2>{scenario.title}</h2><p className="call-participants">{scenario.participants}</p></div><span className="recording-pill"><span className="recording-dot" /> {callFinished ? "Ready to end" : "In progress"}</span></div><div className="microphone-stage"><div className="microphone-ring microphone-ring-one" /><div className="microphone-ring microphone-ring-two" /><div className="microphone-icon" aria-label="Microphone recording" role="img">♩</div><span>{callFinished ? "Scenario complete" : "Listening to your call"}</span></div><div className="transcript" aria-label="Call transcription">{scenario.transcript.slice(0, visibleLines).map((line, index) => <div className="transcript-line" key={`${line.speaker}-${index}`}><strong>{line.speaker}</strong><p>{line.text}</p></div>)}{!callFinished ? <div className="transcript-line pending-line"><strong>{scenario.transcript[visibleLines].speaker}</strong><p><span /><span /><span /></p></div> : null}</div><div className="call-progress"><span>{Math.min(visibleLines, scenario.transcript.length)} of {scenario.transcript.length} moments</span><span>{Math.round((Math.min(visibleLines, scenario.transcript.length) / scenario.transcript.length) * 100)}%</span></div><div className="call-actions"><button className="button button-secondary" type="button" onClick={() => setScreen("context")}>Back</button><div className="call-action-group">{!callFinished ? <button className="button button-primary" type="button" onClick={() => setVisibleLines((current) => Math.min(current + 2, scenario.transcript.length))}>Continue mock call <span aria-hidden="true">→</span></button> : null}<button className="button button-danger" type="button" onClick={endCall}><span className="stop-icon" /> End mock call</button></div></div></section> : null}
+      {screen === "call" ? <section className="workspace-card call-card"><div className="call-topline"><div><span className="card-kicker">Live transcription</span><h2>{scenario.title}</h2><p className="call-participants">{scenario.participants}</p></div><span className="recording-pill"><span className="recording-dot" /> {isListening ? "Listening" : "Not listening"}</span></div><div className="microphone-stage"><div className="microphone-ring microphone-ring-one" /><div className="microphone-ring microphone-ring-two" /><div className="microphone-icon" aria-label="Microphone recording" role="img">♩</div><span>{isListening ? "Listening to your microphone" : "Microphone inactive"}</span></div>{recognitionError ? <p role="alert" className="helper-text">{recognitionError}</p> : null}<div className="transcript" aria-label="Call transcription">{transcript.map((text, index) => <div className="transcript-line" key={`${text}-${index}`}><strong>You</strong><p>{text}</p></div>)}{interimTranscript ? <div className="transcript-line pending-line"><strong>You</strong><p>{interimTranscript}</p></div> : null}{transcript.length === 0 && !interimTranscript ? <p className="helper-text">Speak into your microphone to begin transcription.</p> : null}</div><div className="call-progress"><span>{transcript.length} moments captured</span><span>{isListening ? "Live" : "Paused"}</span></div><div className="call-actions"><button className="button button-secondary" type="button" onClick={() => setScreen("context")}>Back</button><div className="call-action-group"><button className="button button-danger" type="button" onClick={endCall}><span className="stop-icon" /> End call</button></div></div></section> : null}
       {screen === "after-call" ? <div className="results-grid"><section className="workspace-card summary-card"><span className="card-kicker">After the call</span><h2>Here’s what happened</h2><p className="summary-lead">{scenario.outcome}</p><div className="summary-meta"><span>⏱ {scenario.duration}</span><span>✦ {scenario.actions.length} key actions</span><span>◷ Just now</span></div><div className="context-note"><strong>Scenario context</strong><p>{context || "No additional context was added before this call."}</p></div></section><section className="workspace-card actions-card"><div className="actions-heading"><div><span className="card-kicker">Next steps</span><h2>Action items</h2></div><span className="action-count">{actions.filter((action) => action.done).length}/{actions.length}</span></div><div className="action-list">{actions.map((action) => <label className={`action-item${action.done ? " action-done" : ""}`} key={action.id}><input type="checkbox" checked={action.done} onChange={() => toggleAction(action.id)} /><span className="custom-checkbox" /><span className="action-text"><strong>{action.text}</strong><small>Owner · {action.owner}</small></span></label>)}</div></section><button className="button button-secondary start-over" type="button" onClick={reset}>Start another call</button></div> : null}
     </main><footer className="site-footer"><div className="container footer-inner"><PromptbookBrand /><span>Promptbook · 2026</span></div></footer>
   </div>;
