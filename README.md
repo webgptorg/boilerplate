@@ -23,9 +23,13 @@ Open `http://localhost:3000`.
 Before committing:
 
 ```bash
+npm test
 npm run check
 npm run build
 ```
+
+`npm test` runs the browser smoke test in `tests/e2e.mjs`; `npm run test:e2e` remains
+available as the explicit test command.
 
 ## Structure
 
