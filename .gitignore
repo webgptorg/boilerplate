@@ -10,3 +10,7 @@ yarn-error.log*
 pnpm-debug.log*
 .DS_Store
 *.tsbuildinfo
+
+# Promptbook Coder
+/.promptbook
+.env
