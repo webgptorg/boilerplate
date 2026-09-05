@@ -8,8 +8,6 @@ Promptbook-branded Next.js starter for small internal tools, demos, product expe
 - Promptbook brand tokens from the official brand kit
 - Outfit headlines + Inter UI typography through `next/font`
 - Small local UI primitives in `components/ui`
-- `@promptbook/components`
-- Live `BookEditor` example
 - ESLint + TypeScript checks
 - LF line endings via `.gitattributes` and `.editorconfig`
 
@@ -35,10 +33,9 @@ npm run build
 app/
   globals.css      Promptbook tokens and global styles
   layout.tsx       metadata + Outfit/Inter
-  page.tsx         starter showcase
+  page.tsx         header/footer shell
 components/
   ui/              small reusable primitives
-  book-example.tsx real @promptbook/components example
   promptbook-brand.tsx
 lib/
   cn.ts            tiny className helper
@@ -67,6 +64,5 @@ See the current brand kit at https://www.ptbk.io/branding before creating new lo
 - Product: https://www.ptbk.io/
 - Coder: https://coder.ptbk.io/
 - Promptbook repository: https://github.com/webgptorg/promptbook
-- Components: `@promptbook/components`
 
 The starter is intentionally small. Prefer extending the local primitives over introducing a large UI framework unless the product genuinely needs one.
