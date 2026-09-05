@@ -1,0 +1,1 @@
+The third screen shouldn't be mocked, but use real AI to do the call summary. 
