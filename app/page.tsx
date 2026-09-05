@@ -7,6 +7,15 @@ type Screen = "context" | "call" | "after-call";
 type ScenarioId = "weekly" | "customer" | "technical";
 type Action = { id: number; text: string; owner: string; done: boolean };
 type GeneratedSummary = { outcome: string; actions: Action[] };
+type SavedCall = GeneratedSummary & {
+  id: string;
+  scenarioId: ScenarioId;
+  title: string;
+  participants: string;
+  duration: string;
+  context: string;
+  createdAt: string;
+};
 type Scenario = {
   id: ScenarioId;
   title: string;
@@ -67,6 +76,8 @@ const scenarios: Scenario[] = [
   },
 ];
 
+const SAVED_CALLS_STORAGE_KEY = "promptbook-saved-calls";
+
 export default function Home() {
   const [screen, setScreen] = useState<Screen>("context");
   const [selectedId, setSelectedId] = useState<ScenarioId>("weekly");
@@ -76,11 +87,52 @@ export default function Home() {
   const [recognitionError, setRecognitionError] = useState("");
   const [isListening, setIsListening] = useState(false);
   const [generatedSummary, setGeneratedSummary] = useState<GeneratedSummary | null>(null);
+  const [savedCallId, setSavedCallId] = useState<string | null>(null);
   const [summaryError, setSummaryError] = useState("");
   const [isSummarizing, setIsSummarizing] = useState(false);
+  const [savedCalls, setSavedCalls] = useState<SavedCall[]>(() => {
+    if (typeof window === "undefined") return [];
+    const storedCalls = window.localStorage.getItem(SAVED_CALLS_STORAGE_KEY);
+    if (!storedCalls) return [];
+    try {
+      return JSON.parse(storedCalls) as SavedCall[];
+    } catch {
+      window.localStorage.removeItem(SAVED_CALLS_STORAGE_KEY);
+      return [];
+    }
+  });
   const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const [actions, setActions] = useState<Action[]>(scenarios[0].actions);
   const scenario = scenarios.find((item) => item.id === selectedId) ?? scenarios[0];
+
+  function saveCall(summary: GeneratedSummary) {
+    const savedCall: SavedCall = {
+      ...summary,
+      id: `${Date.now()}`,
+      scenarioId: scenario.id,
+      title: scenario.title,
+      participants: scenario.participants,
+      duration: scenario.duration,
+      context,
+      createdAt: new Date().toISOString(),
+    };
+    setSavedCallId(savedCall.id);
+    setSavedCalls((current) => {
+      const nextCalls = [savedCall, ...current];
+      window.localStorage.setItem(SAVED_CALLS_STORAGE_KEY, JSON.stringify(nextCalls));
+      return nextCalls;
+    });
+  }
+
+  function openSavedCall(savedCall: SavedCall) {
+    setSelectedId(savedCall.scenarioId);
+    setContext(savedCall.context);
+    setGeneratedSummary(savedCall);
+    setSavedCallId(savedCall.id);
+    setActions(savedCall.actions);
+    setSummaryError("");
+    setScreen("after-call");
+  }
 
   function chooseScenario(id: ScenarioId) { const next = scenarios.find((item) => item.id === id) ?? scenarios[0]; setSelectedId(id); setContext(next.context); setActions(next.actions); }
   useEffect(() => {
@@ -116,17 +168,28 @@ export default function Home() {
   function startCall() { setTranscript([]); setInterimTranscript(""); setRecognitionError(""); setGeneratedSummary(null); setSummaryError(""); setActions(scenario.actions); setScreen("call"); }
   async function endCall() {
     recognitionRef.current?.stop();
+    window.scrollTo({ top: 0, behavior: "instant" });
     setIsSummarizing(true); setSummaryError(""); setScreen("after-call");
     try {
       const response = await fetch("/api/summarize", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ context, transcript }) });
       const result = (await response.json()) as GeneratedSummary & { error?: string };
       if (!response.ok) throw new Error(result.error ?? "Unable to generate a summary.");
-      setGeneratedSummary(result); setActions(result.actions);
+      setGeneratedSummary(result);
+      setActions((current) => current.length > 0 ? current : result.actions);
+      saveCall(result);
     } catch (error) { setSummaryError(error instanceof Error ? error.message : "Unable to generate a summary."); }
     finally { setIsSummarizing(false); }
   }
-  function reset() { recognitionRef.current?.stop(); setSelectedId("weekly"); setContext(scenarios[0].context); setActions(scenarios[0].actions); setGeneratedSummary(null); setSummaryError(""); setTranscript([]); setInterimTranscript(""); setScreen("context"); }
-  function toggleAction(id: number) { setActions((current) => current.map((action) => action.id === id ? { ...action, done: !action.done } : action)); }
+  function reset() { recognitionRef.current?.stop(); setSelectedId("weekly"); setContext(scenarios[0].context); setActions(scenarios[0].actions); setGeneratedSummary(null); setSavedCallId(null); setSummaryError(""); setTranscript([]); setInterimTranscript(""); setScreen("context"); }
+  function toggleAction(id: number) {
+    const nextActions = actions.map((action) => action.id === id ? { ...action, done: !action.done } : action);
+    setActions(nextActions);
+    setSavedCalls((calls) => {
+      const nextCalls = calls.map((call) => call.id === savedCallId ? { ...call, actions: nextActions } : call);
+      window.localStorage.setItem(SAVED_CALLS_STORAGE_KEY, JSON.stringify(nextCalls));
+      return nextCalls;
+    });
+  }
   function goToStep(nextScreen: Screen) {
     if (nextScreen === "call") setActions(scenario.actions);
     if (nextScreen === "after-call") recognitionRef.current?.stop();
@@ -135,11 +198,17 @@ export default function Home() {
 
   return <div className="site-shell">
     <header className="site-header"><div className="container header-inner"><PromptbookBrand /><span className="header-status">Call notes</span></div></header>
-    <main className="container app-content">
+    <div className="app-layout container">
+      <aside className="call-tray" aria-label="Saved calls">
+        <div className="tray-heading"><div><span className="card-kicker">History</span><h3>Your calls</h3></div><span className="tray-count">{savedCalls.length}</span></div>
+        {savedCalls.length === 0 ? <p className="tray-empty">Completed calls will appear here.</p> : <div className="saved-call-list">{savedCalls.map((savedCall) => <button className="saved-call" key={savedCall.id} type="button" onClick={() => openSavedCall(savedCall)}><strong>{savedCall.title}</strong><span>{new Date(savedCall.createdAt).toLocaleDateString()}</span><small>{savedCall.actions.length} action items</small></button>)}</div>}
+      </aside>
+      <main className="app-content">
       <div className="app-heading"><div><span className="eyebrow">Mock workspace</span><h1>{screen === "context" ? "Prepare your call" : screen === "call" ? "Your call" : "Call complete"}</h1></div><div className="stepper" aria-label="Call progress"><button className={`step ${screen === "context" ? "active" : "complete"}`} type="button" aria-label="Go to prepare your call" aria-current={screen === "context" ? "step" : undefined} onClick={() => goToStep("context")}>1</button><span className="step-line" /><button className={`step ${screen === "call" ? "active" : screen === "after-call" ? "complete" : ""}`} type="button" aria-label="Go to your call" aria-current={screen === "call" ? "step" : undefined} onClick={() => goToStep("call")}>2</button><span className="step-line" /><button className={`step ${screen === "after-call" ? "active" : ""}`} type="button" aria-label="Go to call complete" aria-current={screen === "after-call" ? "step" : undefined} onClick={() => goToStep("after-call")}>3</button></div></div>
       {screen === "context" ? <section className="workspace-card context-card"><div className="card-copy"><span className="card-kicker">Before the call</span><h2>Choose a scenario</h2><p>Pick a prepared call to rehearse. Each mock includes a complete conversation, a realistic outcome, and follow-up actions.</p></div><div className="scenario-list" aria-label="Prepared call scenarios">{scenarios.map((item) => <button className={`scenario-option${item.id === selectedId ? " selected" : ""}`} key={item.id} type="button" onClick={() => chooseScenario(item.id)}><span className={`scenario-icon ${item.id}`} aria-hidden="true">{item.id === "weekly" ? "↗" : item.id === "customer" ? "!" : "⌁"}</span><span className="scenario-copy"><strong>{item.title}</strong><small>{item.description}</small><em>{item.duration} · {item.participants}</em></span><span className={`badge ${item.toneClass}`}>{item.tone}</span></button>)}</div><label className="textarea-label" htmlFor="context">Call context</label><textarea id="context" value={context} onChange={(event) => setContext(event.target.value)} rows={4} /><div className="card-footer"><span className="helper-text">You can edit the context before starting.</span><button className="button button-primary" type="button" onClick={startCall}>Start mock call <span aria-hidden="true">→</span></button></div></section> : null}
       {screen === "call" ? <section className="workspace-card call-card"><div className="call-topline"><div><span className="card-kicker">Live transcription</span><h2>{scenario.title}</h2><p className="call-participants">{scenario.participants}</p></div><span className="recording-pill"><span className="recording-dot" /> {isListening ? "Listening" : "Not listening"}</span></div><div className="microphone-stage"><div className="microphone-ring microphone-ring-one" /><div className="microphone-ring microphone-ring-two" /><div className="microphone-icon" aria-label="Microphone recording" role="img">♩</div><span>{isListening ? "Listening to your microphone" : "Microphone inactive"}</span></div>{recognitionError ? <p role="alert" className="helper-text">{recognitionError}</p> : null}<div className="transcript" aria-label="Call transcription">{transcript.map((text, index) => <div className="transcript-line" key={`${text}-${index}`}><strong>You</strong><p>{text}</p></div>)}{interimTranscript ? <div className="transcript-line pending-line"><strong>You</strong><p>{interimTranscript}</p></div> : null}{transcript.length === 0 && !interimTranscript ? <p className="helper-text">Speak into your microphone to begin transcription.</p> : null}</div><div className="call-progress"><span>{transcript.length} moments captured</span><span>{isListening ? "Live" : "Paused"}</span></div><div className="call-actions"><button className="button button-secondary" type="button" onClick={() => setScreen("context")}>Back</button><div className="call-action-group"><button className="button button-primary button-danger" type="button" onClick={endCall}><span className="stop-icon" /> End call</button></div></div></section> : null}
-      {screen === "after-call" ? <div className="results-grid"><section className="workspace-card summary-card"><span className="card-kicker">After the call</span><h2>Here’s what happened</h2>{isSummarizing ? <p className="summary-lead">AI is reviewing the transcript…</p> : summaryError ? <p className="summary-lead" role="alert">{summaryError}</p> : <p className="summary-lead">{generatedSummary?.outcome}</p>}<div className="summary-meta"><span>⏱ {scenario.duration}</span><span>✦ {actions.length} key actions</span><span>◷ Just now</span></div><div className="context-note"><strong>Scenario context</strong><p>{context || "No additional context was added before this call."}</p></div></section><section className="workspace-card actions-card"><div className="actions-heading"><div><span className="card-kicker">Next steps</span><h2>Action items</h2></div><span className="action-count">{actions.filter((action) => action.done).length}/{actions.length}</span></div><div className="action-list">{actions.map((action) => <label className={`action-item${action.done ? " action-done" : ""}`} key={action.id}><input type="checkbox" checked={action.done} onChange={() => toggleAction(action.id)} /><span className="custom-checkbox" /><span className="action-text"><strong>{action.text}</strong><small>Owner · {action.owner}</small></span></label>)}</div></section><button className="button button-secondary start-over" type="button" onClick={reset}>Start another call</button></div> : null}
-    </main><footer className="site-footer"><div className="container footer-inner"><PromptbookBrand /><span>Promptbook · 2026</span></div></footer>
+      {screen === "after-call" ? <div className="results-grid"><section className="workspace-card summary-card"><span className="card-kicker">After the call</span><h2>Here’s what happened</h2>{isSummarizing ? <p className="summary-lead">AI is reviewing the transcript…</p> : summaryError ? <p className="summary-lead" role="alert">{summaryError}</p> : <p className="summary-lead">{generatedSummary?.outcome}</p>}<div className="summary-meta"><span>⏱ {scenario.duration}</span><span>✦ {actions.length} key actions</span><span>◷ Just now</span></div><div className="context-note"><strong>Scenario context</strong><p>{context || "No additional context was added before this call."}</p></div></section><section className="workspace-card actions-card"><div className="actions-heading"><div><span className="card-kicker">Next steps</span><h2>Action items</h2></div><span className="action-count">{actions.filter((action) => action.done).length}/{actions.length}</span></div><div className="action-list">{actions.map((action) => <button className={`action-item${action.done ? " action-done" : ""}`} key={action.id} type="button" onClick={() => toggleAction(action.id)}><span className="custom-checkbox" aria-hidden="true" /> <span className="action-text"><strong>{action.text}</strong><small>Owner · {action.owner}</small></span></button>)}</div></section><button className="button button-secondary start-over" type="button" onClick={reset}>Start another call</button></div> : null}
+      </main>
+    </div><footer className="site-footer"><div className="container footer-inner"><PromptbookBrand /><span>Promptbook · 2026</span></div></footer>
   </div>;
 }
