@@ -438,7 +438,7 @@ textarea::placeholder {
 .call-action-group { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
 
 .button-danger {
-  background: #ef6464;
+  background: var(--pb-ink);
   color: var(--pb-white);
 }
 
